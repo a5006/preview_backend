@@ -1,18 +1,29 @@
 package main
 
 import (
-	"os"
-
+	"app/router"
+	"fmt"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
 	r := gin.Default()
-	r.GET("/", func(ctx *gin.Context) {
-		ctx.JSON(200, gin.H{
-			"message": "响应值!",
-			"version": os.Getenv("VERSION"),
-		})
+
+	router.InitRouter(r)
+	r.Use(func(c *gin.Context) {
+
+		defer func() {
+			fmt.Println(recover(), "dasffdsa ")
+			if e := recover(); e != nil {
+				fmt.Println("err1111111111111")
+				c.AbortWithStatusJSON(400, gin.H{
+					"errcode": 0,
+				})
+			}
+		}()
 	})
-	r.Run(":2333")
+	err := r.Run(":2333")
+	if err != nil {
+		panic(err)
+	}
 }
