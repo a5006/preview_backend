@@ -8,6 +8,11 @@ import { UploadService } from './upload.service';
 @Controller('upload')
 export class UploadController {
   constructor(private uploadService: UploadService) {}
+  @Get('/')
+  Init(@Query() query) {
+    return { a: 12 };
+  }
+
   @Get('/check/file')
   checkFile(@Query() query) {
     return this.uploadService.checkFile(query);

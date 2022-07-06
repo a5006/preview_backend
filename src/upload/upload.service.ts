@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { readdir, rename, stat } from 'fs/promises';
+import { readdir, rename, stat, unlink } from 'fs/promises';
 import { join } from 'path';
 import { ensureDirSync } from 'fs-extra';
-import { createWriteStream, createReadStream } from 'fs';
+import { createWriteStream, createReadStream, unlinkSync, rmdirSync } from 'fs';
 import {
   checkQueryType,
   chunkQuery,
@@ -10,7 +10,9 @@ import {
   Result,
   uploadParams,
 } from './t';
+import { pipeline } from 'stream';
 const UploadDir = join(process.cwd(), '/static');
+const ChunkSize = 5 * 1024 * 1024;
 @Injectable()
 export class UploadService {
   async checkFile(query: checkQueryType) {
@@ -117,18 +119,10 @@ export class UploadService {
       const destFile = join(folder, `${body.index}`);
       const writeStream = createWriteStream(destFile);
       writeStream.write(file.buffer);
-      // const res = await this.copyFile(file.data.path, destFile);
-
-      // if (res) {
       return {
         stat: 1,
         desc: index,
       };
-      // }
-      // return {
-      // stat: 0,
-      // desc: '修改名称失败',
-      // };
     } catch {
       return {
         stat: 0,
@@ -138,7 +132,7 @@ export class UploadService {
   }
 
   private async folderIsExist(folder: string) {
-    const res = await ensureDirSync(join(folder));
+    await ensureDirSync(join(folder));
     return true;
   }
 
@@ -161,27 +155,63 @@ export class UploadService {
     newFileName: string,
     size?: number,
   ): Promise<Result> {
-    const fileArr = await this.listDir(srcDir);
-    if (!fileArr.length) {
+    try {
+      const fileArr = await this.listDir(srcDir);
+      if (!fileArr.length) {
+        return {
+          desc: '区块为空',
+          stat: 0,
+        };
+      }
+      const writeStream = createWriteStream(join(targetDir, newFileName));
+      function mergeSteam() {
+        if (!fileArr.length) {
+          return writeStream.end('hebing chenggong');
+        }
+        const fileName = fileArr.shift();
+        const currentFilePath = join(srcDir, fileName);
+        const readStream = createReadStream(currentFilePath);
+        readStream.pipe(writeStream, { end: false });
+        readStream.on('end', () => {
+          mergeSteam();
+        });
+        readStream.on('error', () => {
+          writeStream.close();
+        });
+      }
+      mergeSteam();
+
+      // await Promise.all(
+      //   fileArr.map((fileName: string) => {
+      //     //  fileName 只有 0 1 2
+      //     const index = parseInt(fileName);
+      //     const start = index * ChunkSize;
+      //     const readStream = createReadStream(join(srcDir, fileName));
+      //     const writeStream = createWriteStream(join(targetDir, newFileName), {
+      //       start,
+      //     });
+      //     return new Promise((resolve, reject) => {
+      //       pipeline(readStream, writeStream, (err: NodeJS.ErrnoException) => {
+      //         if (err) {
+      //           reject(err);
+      //         } else {
+      //           resolve(true);
+      //         }
+      //       });
+      //     });
+      //   }),
+      // );
+      // console.log(srcDir, 'sdf');
+
       return {
-        desc: '区块为空',
+        desc: '合并成功',
+        stat: 1,
+      };
+    } catch (err) {
+      return {
+        desc: `合并失败${err}`,
         stat: 0,
       };
     }
-    const targetStream = createWriteStream(join(targetDir, newFileName), {
-      encoding: 'binary',
-    });
-    fileArr.sort((a, b) => parseInt(a) - parseInt(b));
-    for (let i = 0; i < fileArr.length; i++) {
-      fileArr[i] = `${srcDir}/${fileArr[i]}`;
-      console.log(fileArr[i], 'lujing');
-
-      const readStream = createReadStream(fileArr[i], { encoding: 'binary' });
-      readStream.pipe(targetStream);
-    }
-    return {
-      desc: '合并成功',
-      stat: 1,
-    };
   }
 }
